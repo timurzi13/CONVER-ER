@@ -94,7 +94,7 @@ struct RootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Header(title: "CONVER+ER", count: m.items.count)
+            Header(title: "CONVER+ER", count: m.visible.count)
 
             HStack(spacing: 0) {
                 LeftColumn(m: m)
@@ -120,8 +120,17 @@ struct LeftColumn: View {
     @Bindable var m: Model
 
     var body: some View {
-        Panel {
-            SettingsPanel(m: m)
+        // the 52pt bar over the panel is the toolbar slot of the 21 Generators
+        // shell; here it picks which half of the queue the app is working on
+        VStack(spacing: L.gap) {
+            Seg(index: $m.modeIndex, options: ["Image", "Video"], width: L.panelW)
+                .disabled(m.running)
+                .opacity(m.running ? 0.5 : 1)
+                .animation(M.easeOut, value: m.running)
+
+            Panel {
+                SettingsPanel(m: m)
+            }
         }
         .padding(.horizontal, L.leftPadX)
         .padding(.vertical, L.gap)
@@ -164,6 +173,65 @@ private struct SettingsPanel: View {
     }
 
     @ViewBuilder private var sections: some View {
+        switch m.mode {
+        case .image: imageSections
+        case .video: videoSections
+        }
+
+        PRule(top: 22)
+        fileSections
+    }
+
+    // MARK: video
+
+    /// the codec list shrinks when the container can't take ProRes, so the
+    /// select is bound to the position of the *effective* codec
+    private var codecIndex: Binding<Int> {
+        Binding(
+            get: { m.videoCodecs.firstIndex(of: m.effectiveCodec) ?? 0 },
+            set: { m.videoCodec = m.videoCodecs[min(max(0, $0), m.videoCodecs.count - 1)] }
+        )
+    }
+
+    private var sizeIndex: Binding<Int> {
+        Binding(
+            get: { m.videoSizes.firstIndex(of: m.effectiveSize) ?? 0 },
+            set: { m.videoSize = m.videoSizes[min(max(0, $0), m.videoSizes.count - 1)] }
+        )
+    }
+
+    @ViewBuilder private var videoSections: some View {
+        PSection(title: "Output", open: $m.videoOpen, top: 0)
+
+        if m.videoOpen {
+            SelectRow(
+                label: "Format",
+                index: $m.videoContainerIndex,
+                options: VideoFormats.containers.map(\.name),
+                top: L.rowGap
+            )
+
+            SelectRow(label: "Codec", index: codecIndex, options: m.videoCodecs.map(\.name), top: L.rowGap)
+                .help(m.effectiveCodec == .copy
+                      ? "Rewraps the streams into the new container without re-encoding — instant and lossless, when the codecs fit."
+                      : m.videoContainer.takesProRes ? "" : "ProRes only fits in MOV.")
+
+            // ProRes and a straight copy keep the source size, so no size to pick
+            if !m.videoSizes.isEmpty {
+                SelectRow(label: "Max Size", index: sizeIndex, options: m.videoSizes.map(\.name), top: L.rowGap)
+                    .help("A ceiling, not a target: a smaller clip keeps its own size.")
+            }
+
+            PRow(label: "Keep Audio", top: L.rowGap) {
+                Spacer().frame(width: L.trackW + L.colGap)
+                PToggle(isOn: $m.keepAudio)
+            }
+        }
+    }
+
+    // MARK: images
+
+    @ViewBuilder private var imageSections: some View {
         // ---- Output ------------------------------------------------------
         PSection(title: "Output", open: $m.outputOpen, top: 0)
 
@@ -247,9 +315,11 @@ private struct SettingsPanel: View {
             }
         }
 
-        PRule(top: 22)
+    }
 
-        // ---- Files -------------------------------------------------------
+    // MARK: files — shared by both sides
+
+    @ViewBuilder private var fileSections: some View {
         PSection(title: "Files", open: $m.filesOpen, top: 12)
 
         if m.filesOpen {
@@ -273,7 +343,6 @@ private struct SettingsPanel: View {
                 top: L.rowGap
             )
         }
-
     }
 }
 

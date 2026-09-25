@@ -4,10 +4,10 @@
 
 # CONVER+ER
 
-**Batch image and PDF converter for macOS.**<br>
+**Batch image, PDF and video converter for macOS.**<br>
 Drop files in, pick a format, press Start.
 
-[![Download](https://img.shields.io/badge/Download-macOS%20·%20Universal-000000?style=for-the-badge)](https://github.com/timurzi13/CONVER-ER/releases/latest/download/CONVER-ER-1.0-macos.zip)
+[![Download](https://img.shields.io/badge/Download-macOS%20·%20Universal-000000?style=for-the-badge)](https://github.com/timurzi13/CONVER-ER/releases/latest/download/CONVER-ER-macos.zip)
 
 ![macOS 15+](https://img.shields.io/badge/macOS-15+-555?style=flat-square)
 ![Universal](https://img.shields.io/badge/Apple_Silicon_+_Intel-555?style=flat-square)
@@ -25,7 +25,10 @@ Drop files in, pick a format, press Start.
 ## What it does
 
 It was built for one job — **JP2 → PNG** — and then grew to cover everything else
-Apple's imaging stack can handle, plus PDF.
+Apple's imaging stack can handle, plus PDF, plus video. A switch above the settings
+flips between the two halves; each keeps its own queue and its own settings.
+
+### Images
 
 **Reads** JPEG 2000 · PDF · PNG · JPEG · TIFF · HEIC · AVIF · WebP · PSD · GIF · BMP ·
 OpenEXR · DICOM · camera RAW from Canon, Nikon, Sony, Fuji, Leica, Phase One and the
@@ -33,8 +36,20 @@ rest — 60-odd formats in all.
 
 **Writes** PNG · JPEG · TIFF · HEIC · AVIF · JPEG 2000 · BMP · GIF · PSD · OpenEXR · PDF
 
+### Video
+
+**Reads** MOV · MP4 · M4V · AVI · MPEG · MPEG-2 TS · DV · 3GP — whatever AVFoundation plays.
+
+**Writes** MOV · MP4 · M4V, as H.264, HEVC, ProRes 422 or ProRes 4444 — or as a
+**straight copy** that rewraps the streams into the new container without re-encoding
+anything. MOV → MP4 that way takes a second and loses nothing.
+
+![Video](docs/screenshot-video.png)
+
 Drop files or whole folders (they unfold recursively), drop them on the Dock icon, or
-use `⌘O`. Everything converts in parallel across your cores.
+use `⌘O`. Images and videos sort themselves into their tabs; drop only videos and the
+app switches to Video for you. Stills convert in parallel across all cores, video two at
+a time so the hardware encoders stay busy without fighting each other.
 
 ## Install
 
@@ -58,6 +73,8 @@ press **Open Anyway**.
 
 The panel only shows what actually affects the format you picked — no dead controls.
 
+**Images**
+
 | | |
 |---|---|
 | **Format** | the output format |
@@ -67,6 +84,20 @@ The panel only shows what actually affects the format you picked — no dead con
 | **Keep Metadata** | carry EXIF / IPTC / colour profile into the result |
 | **Pages** | every page of a PDF, or one specific page |
 | **Raster DPI** | how finely a PDF page is rendered — 72 is the page's own size |
+
+**Video**
+
+| | |
+|---|---|
+| **Format** | MOV, MP4 or M4V |
+| **Codec** | Copy Streams, H.264, HEVC — plus ProRes 422 and 4444 in MOV |
+| **Max Size** | a ceiling for H.264 and HEVC; smaller clips keep their own size |
+| **Keep Audio** | off gives you a silent clip, handy for loops |
+
+**Both**
+
+| | |
+|---|---|
 | **Save To** | beside the original, or into a folder you choose |
 | **If Exists** | rename, overwrite, or skip |
 
@@ -74,9 +105,9 @@ The panel only shows what actually affects the format you picked — no dead con
 
 ## Under the hood
 
-Everything runs on Apple's **ImageIO** and **CoreGraphics**. No bundled decoders, no
-Homebrew, no Python — JPEG 2000 support is already in macOS, it just isn't exposed
-anywhere useful.
+Everything runs on Apple's **ImageIO**, **CoreGraphics** and **AVFoundation**. No bundled
+decoders, no ffmpeg, no Homebrew, no Python — JPEG 2000 support and hardware video
+encoders are already in macOS, they just aren't exposed anywhere useful.
 
 Three things the converter is careful about:
 
@@ -91,6 +122,17 @@ Three things the converter is careful about:
   600 dpi raster, not a 72 dpi page floating on a large white sheet.
 
 PDF → PDF is a page extract rather than a re-render: the vectors survive.
+
+On the video side:
+
+- **Copy Streams re-encodes nothing.** Switching container is a rewrap, so it's instant
+  and bit-identical.
+- **Portrait phone clips stay upright.** A phone records landscape and marks the file as
+  rotated; that rotation is carried across every path, including the silent one, which
+  has to rebuild the clip from its picture track alone.
+- **Impossible combinations never reach the encoder.** ProRes only exists in MOV, so the
+  codec list simply doesn't offer it for MP4 and M4V, and size presets appear only where
+  the system actually has them.
 
 ## Build it yourself
 
@@ -111,7 +153,8 @@ Sources/
   ScrollArea.swift  the custom scrollbar
   Stage.swift       drop zone, queue, bottom bars
   Model.swift       state, queue, the parallel run
-  Converter.swift   the engine
+  Converter.swift   the image and PDF engine
+  VideoConverter.swift  the video engine
   Theme.swift       palette, metrics, type
 ```
 

@@ -444,25 +444,42 @@ enum Converter {
     // MARK: naming
 
     static func outputURL(for src: URL, options o: Options, suffix: String = "") throws -> URL {
+        try outputURL(
+            for: src, ext: o.format.ext,
+            destination: o.destination, folder: o.folder, onExists: o.onExists,
+            suffix: suffix
+        )
+    }
+
+    /// Shared by images and video: where the result goes and what happens when
+    /// something is already there.
+    static func outputURL(
+        for src: URL,
+        ext: String,
+        destination: Destination,
+        folder chosen: URL?,
+        onExists: OnExists,
+        suffix: String = ""
+    ) throws -> URL {
         let folder: URL
-        switch o.destination {
+        switch destination {
         case .beside:
             folder = src.deletingLastPathComponent()
         case .folder:
-            guard let f = o.folder else { throw ConvertError.noDestination }
+            guard let f = chosen else { throw ConvertError.noDestination }
             folder = f
         }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
         let stem = src.deletingPathExtension().lastPathComponent + suffix
-        var candidate = folder.appendingPathComponent("\(stem).\(o.format.ext)")
+        var candidate = folder.appendingPathComponent("\(stem).\(ext)")
 
         let fm = FileManager.default
         let clashes = fm.fileExists(atPath: candidate.path)
             || candidate.standardizedFileURL == src.standardizedFileURL
 
         if clashes {
-            switch o.onExists {
+            switch onExists {
             case .overwrite:
                 if candidate.standardizedFileURL == src.standardizedFileURL { throw ConvertError.skipped }
                 try? fm.removeItem(at: candidate)
@@ -471,7 +488,7 @@ enum Converter {
             case .rename:
                 var n = 1
                 repeat {
-                    candidate = folder.appendingPathComponent("\(stem)-\(n).\(o.format.ext)")
+                    candidate = folder.appendingPathComponent("\(stem)-\(n).\(ext)")
                     n += 1
                 } while fm.fileExists(atPath: candidate.path) && n < 1000
             }
@@ -480,6 +497,13 @@ enum Converter {
     }
 
     // MARK: input gathering
+
+    /// What a file is, or nil when neither side can read it.
+    static func kind(of url: URL) -> MediaKind? {
+        if VideoFormats.canRead(url) { return .video }
+        if Formats.canRead(url) { return .image }
+        return nil
+    }
 
     /// Expands folders, keeps only what can be read, skips hidden files.
     static func collect(_ urls: [URL]) -> [URL] {
@@ -495,9 +519,9 @@ enum Converter {
                     options: [.skipsHiddenFiles, .skipsPackageDescendants]
                 )
                 while let item = e?.nextObject() as? URL {
-                    if Formats.canRead(item) { out.append(item) }
+                    if kind(of: item) != nil { out.append(item) }
                 }
-            } else if Formats.canRead(url) {
+            } else if kind(of: url) != nil {
                 out.append(url)
             }
         }

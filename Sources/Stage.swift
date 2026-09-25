@@ -48,7 +48,7 @@ struct Stage: View {
         ZStack {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(P.ink)
-            if m.items.isEmpty {
+            if m.visible.isEmpty {
                 empty
             } else {
                 list
@@ -62,11 +62,13 @@ struct Stage: View {
 
     private var empty: some View {
         VStack(spacing: 10) {
-            Text(targeted ? "Release to add" : "Drop images here")
+            Text(targeted ? "Release to add" : (m.mode == .image ? "Drop images here" : "Drop videos here"))
                 .font(F.medium(26.5))
                 .tracking(-0.012 * 26.5)
                 .foregroundStyle(targeted ? P.accent : Color(hex: 0x707070))
-            Text("JP2 · PDF · PNG · JPEG · TIFF · HEIC · AVIF · PSD · RAW · WebP · and everything else ImageIO reads")
+            Text(m.mode == .image
+                 ? "JP2 · PDF · PNG · JPEG · TIFF · HEIC · AVIF · PSD · RAW · WebP · and everything else ImageIO reads"
+                 : "MOV · MP4 · M4V · AVI · MPEG · DV · 3GP · and everything else AVFoundation plays")
                 .font(F.regular(F.ui))
                 .foregroundStyle(Color(hex: 0x4E4E4E))
         }
@@ -76,9 +78,9 @@ struct Stage: View {
     private var list: some View {
         ScrollArea(thumbInset: 12, trackTop: listPad, trackBottom: listPad) {
             LazyVStack(spacing: 0) {
-                ForEach(m.items) { item in
-                    Row(item: item, target: m.format.name, m: m)
-                    if item.id != m.items.last?.id {
+                ForEach(m.visible) { item in
+                    Row(item: item, target: m.targetName, m: m)
+                    if item.id != m.visible.last?.id {
                         Rectangle().fill(Color(hex: 0x1E1E1E)).frame(height: 1)
                             .padding(.horizontal, 20)
                     }
@@ -97,13 +99,13 @@ struct Stage: View {
                 .font(F.regular(F.ui))
                 .foregroundStyle(P.xbLabel)
                 .frame(width: 101)
-            XBButton(title: m.format.name, enabled: !m.running) {
-                m.formatIndex = (m.formatIndex + 1) % Formats.all.count
+            XBButton(title: m.targetName, enabled: !m.running) {
+                m.cycleTarget()
             }
             XBButton(
                 title: m.running ? "\(Int(m.progress * 100))%" : "Start",
                 live: m.running,
-                enabled: !m.running && !m.items.isEmpty
+                enabled: !m.running && !m.visible.isEmpty
             ) {
                 m.run()
             }
@@ -112,10 +114,10 @@ struct Stage: View {
 
     private var utilityBar: some View {
         PillBar {
-            RoundBtn(system: "folder", enabled: m.items.contains { $0.out != nil }) {
-                if let done = m.items.last(where: { $0.out != nil }) { m.reveal(done) }
+            RoundBtn(system: "folder", enabled: m.visible.contains { $0.out != nil }) {
+                if let done = m.visible.last(where: { $0.out != nil }) { m.reveal(done) }
             }
-            RoundBtn(system: "trash", enabled: !m.items.isEmpty && !m.running) {
+            RoundBtn(system: "trash", enabled: !m.visible.isEmpty && !m.running) {
                 withAnimation(M.easeOut) { m.clear() }
             }
         }
@@ -148,6 +150,12 @@ private struct Row: View {
                     Text(item.pages == 1 ? "1 page" : "\(item.pages) pages")
                         .font(F.regular(12))
                         .foregroundStyle(Color(hex: 0x8A8A8A))
+                } else if item.isVideo, !item.codec.isEmpty {
+                    Text(videoLine)
+                        .font(F.regular(12))
+                        .monospacedDigit()
+                        .foregroundStyle(Color(hex: 0x8A8A8A))
+                        .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -195,14 +203,27 @@ private struct Row: View {
         .animation(M.quick, value: hover)
     }
 
-    /// PDFs fan out into one file per page, so say how many are coming
+    /// codec · length · frame rate, the three things you check on a clip
+    private var videoLine: String {
+        var parts = [item.codec, Timecode.short(item.seconds)]
+        if item.fps > 0 { parts.append(String(format: item.fps.rounded() == item.fps ? "%.0f fps" : "%.2f fps", item.fps)) }
+        if !item.hasAudio { parts.append("no audio") }
+        return parts.joined(separator: " · ")
+    }
+
     private var targetBadge: String {
+        // a video's container says little on its own; the codec is the decision
+        if item.isVideo { return "\(target) · \(m.effectiveCodec.badge)" }
+        // PDFs fan out into one file per page, so say how many are coming
         if item.status == .done, item.outCount > 1 { return "\(target) ×\(item.outCount)" }
         if item.isPDF, m.pdfModeIndex == 0, item.pages > 1 { return "\(target) ×\(item.pages)" }
         return target
     }
 
     private var sizeText: String {
+        if item.isVideo, item.status == .working {
+            return "\(Int((item.progress * 100).rounded()))%"
+        }
         if item.status == .done, item.outBytes > 0 {
             return "\(Fmt.bytes(item.bytes)) → \(Fmt.bytes(item.outBytes))"
         }
