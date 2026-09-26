@@ -34,6 +34,9 @@ struct Item: Identifiable, Equatable {
     var fps: Double = 0
     var codec: String = ""
     var hasAudio = false
+    /// set when the file can never convert here (e.g. a codec macOS dropped);
+    /// the row shows it straight away and Start leaves the file alone
+    var blocked: String? = nil
 
     var bytes: Int64 = 0
     var status: Status = .queued
@@ -167,7 +170,8 @@ final class Model {
     /// Smooth for video (each export reports its own fraction), stepwise for
     /// images, which finish too quickly to be worth reporting.
     var progress: Double {
-        let v = visible
+        // files that were never going to run don't hold the bar back
+        let v = visible.filter { $0.blocked == nil }
         guard !v.isEmpty else { return 0 }
         let sum = v.reduce(0.0) { acc, it in
             if it.status.isTerminal { return acc + 1 }
@@ -175,6 +179,9 @@ final class Model {
         }
         return sum / Double(v.count)
     }
+
+    /// something in this tab that can actually convert
+    var hasWork: Bool { visible.contains { $0.blocked == nil } }
 
     var folderName: String {
         folder.map { $0.lastPathComponent } ?? "Choose Folder…"
@@ -218,10 +225,11 @@ final class Model {
                         Model.shared.apply(id) {
                             $0.kind = url.pathExtension.uppercased()
                             $0.bytes = bytes
-                            guard let p else { $0.status = .failed("Can’t read"); return }
+                            guard let p else { $0.blocked = "Can’t read"; return }
                             $0.w = p.w; $0.h = p.h
                             $0.seconds = p.seconds; $0.fps = p.fps
                             $0.codec = p.codec; $0.hasAudio = p.hasAudio
+                            if !p.decodable { $0.blocked = VideoError.legacy(p.codec) }
                         }
                     }
                 }
@@ -295,7 +303,7 @@ final class Model {
 
     func run() {
         guard !running else { return }
-        let batch = visible.filter { $0.status != .failed("Can’t read") }
+        let batch = visible.filter { $0.blocked == nil }
         guard !batch.isEmpty else { return }
         if (Destination(rawValue: destIndex) ?? .beside) == .folder && folder == nil {
             pickDestination()

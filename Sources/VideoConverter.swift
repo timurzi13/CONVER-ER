@@ -135,6 +135,7 @@ struct VideoOptions {
 enum VideoError: LocalizedError {
     case unreadable
     case noVideo
+    case undecodable(String)
     case incompatible(String)
     case failed(String)
 
@@ -142,9 +143,15 @@ enum VideoError: LocalizedError {
         switch self {
         case .unreadable:          return "Can’t read"
         case .noVideo:             return "No video track"
+        case .undecodable(let c):  return VideoError.legacy(c)
         case .incompatible(let s): return s
         case .failed(let s):       return s
         }
+    }
+
+    /// Shown in the queue as soon as such a file is added, not only after Start.
+    static func legacy(_ codec: String) -> String {
+        "\(codec.isEmpty ? "This codec" : codec) — macOS no longer decodes it"
     }
 }
 
@@ -158,6 +165,9 @@ struct VideoProbe: Sendable {
     var codec = ""
     var container = ""
     var hasAudio = false
+    /// false for codecs macOS dropped (Sorenson, Cinepak, Indeo…): the file
+    /// opens, the sound plays, the picture can't be decoded
+    var decodable = true
 }
 
 enum VideoConverter {
@@ -180,6 +190,7 @@ enum VideoConverter {
         if let f = try? await track.load(.formatDescriptions).first {
             p.codec = codecName(CMFormatDescriptionGetMediaSubType(f))
         }
+        p.decodable = (try? await track.load(.isDecodable)) ?? true
         p.hasAudio = !((try? await asset.loadTracks(withMediaType: .audio))?.isEmpty ?? true)
         return p
     }
@@ -199,6 +210,13 @@ enum VideoConverter {
         case "mp4v":                   return "MPEG-4"
         case "av01":                   return "AV1"
         case "vp09":                   return "VP9"
+        case "SVQ1":                   return "Sorenson Video"
+        case "SVQ3":                   return "Sorenson Video 3"
+        case "cvid":                   return "Cinepak"
+        case "rpza":                   return "Apple Video"
+        case "smc ":                   return "Apple Graphics"
+        case "rle ":                   return "Animation"
+        case "IV32", "IV41", "IV50":   return "Indeo"
         default:                       return fourCC.trimmingCharacters(in: .whitespaces).uppercased()
         }
     }
@@ -216,17 +234,27 @@ enum VideoConverter {
               !videoTracks.isEmpty
         else { throw VideoError.noVideo }
 
+        // a codec macOS dropped can't be re-encoded, and copying it just makes
+        // another file nothing can play — say so instead of trying
+        for track in videoTracks where (try? await track.load(.isDecodable)) == false {
+            let code = (try? await track.load(.formatDescriptions).first)
+                .map { codecName(CMFormatDescriptionGetMediaSubType($0)) } ?? ""
+            throw VideoError.undecodable(code)
+        }
+
         // dropping audio means building a composition of the picture alone
         let source: AVAsset = o.keepAudio ? asset : try await pictureOnly(asset, videoTracks)
 
         let fileType = o.container.fileType
+        let sourceCodec = (try? await videoTracks[0].load(.formatDescriptions).first)
+            .map { codecName(CMFormatDescriptionGetMediaSubType($0)) } ?? ""
         guard await AVAssetExportSession.compatibility(
             ofExportPreset: o.preset, with: source, outputFileType: fileType
         ) else {
-            throw VideoError.incompatible(incompatibility(o))
+            throw VideoError.incompatible(incompatibility(o, source: sourceCodec))
         }
         guard let session = AVAssetExportSession(asset: source, presetName: o.preset) else {
-            throw VideoError.incompatible(incompatibility(o))
+            throw VideoError.incompatible(incompatibility(o, source: sourceCodec))
         }
         session.shouldOptimizeForNetworkUse = o.container.fileType != .mov
 
@@ -267,11 +295,16 @@ enum VideoConverter {
         return comp
     }
 
-    /// Says what to change rather than just that it failed.
-    private static func incompatibility(_ o: VideoOptions) -> String {
+    /// Says what to change rather than just that it failed. Only reached once
+    /// the picture is known to be decodable, so the clash really is between
+    /// the stream and the container.
+    private static func incompatibility(_ o: VideoOptions, source: String) -> String {
         if o.codec.isProRes && !o.container.takesProRes { return "ProRes needs MOV" }
-        if o.codec == .copy { return "Can’t copy into \(o.container.name) — pick a codec" }
-        return "\(o.codec.name) can’t go into \(o.container.name)"
+        if o.codec == .copy {
+            let what = source.isEmpty ? "these streams" : source
+            return "\(what) can’t be copied into \(o.container.name) — pick a codec"
+        }
+        return "macOS won’t export this file as \(o.codec.name) in \(o.container.name)"
     }
 }
 

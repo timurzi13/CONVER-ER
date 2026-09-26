@@ -105,7 +105,7 @@ struct Stage: View {
             XBButton(
                 title: m.running ? "\(Int(m.progress * 100))%" : "Start",
                 live: m.running,
-                enabled: !m.running && !m.visible.isEmpty
+                enabled: !m.running && m.hasWork
             ) {
                 m.run()
             }
@@ -134,7 +134,7 @@ private struct Row: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            StatusDot(status: item.status)
+            StatusDot(status: item.blocked != nil ? .failed(item.blocked!) : item.status)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.url.lastPathComponent)
@@ -142,7 +142,9 @@ private struct Row: View {
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if case .failed(let why) = item.status {
+                if let why = item.blocked {
+                    Text(why).font(F.regular(12)).foregroundStyle(P.bad).lineLimit(1)
+                } else if case .failed(let why) = item.status {
                     Text(why).font(F.regular(12)).foregroundStyle(P.bad).lineLimit(1)
                 } else if item.status == .skipped {
                     Text("Already there — skipped").font(F.regular(12)).foregroundStyle(Color(hex: 0x8A8A8A))
