@@ -34,9 +34,21 @@ struct Item: Identifiable, Equatable {
     var fps: Double = 0
     var codec: String = ""
     var hasAudio = false
+    var audioRate = 0
     /// set when the file can never convert here (e.g. a codec macOS dropped);
     /// the row shows it straight away and Start leaves the file alone
     var blocked: String? = nil
+    /// macOS can't decode or open it, so the bundled ffmpeg does the work
+    var viaFFmpeg = false
+
+    /// what ffmpeg needs to size and time the job, rebuilt from the row
+    var probe: VideoProbe {
+        var p = VideoProbe()
+        p.w = w; p.h = h; p.seconds = seconds; p.fps = fps
+        p.codec = codec; p.hasAudio = hasAudio; p.container = kind
+        p.audioRate = audioRate
+        return p
+    }
 
     var bytes: Int64 = 0
     var status: Status = .queued
@@ -220,16 +232,34 @@ final class Model {
                         }
                     }
                 case .video:
-                    let p = await VideoConverter.probe(url)
+                    // macOS first; ffmpeg only for what macOS can't open or decode
+                    let native = await VideoConverter.probe(url)
+                    var chosen = native
+                    var viaFFmpeg = false
+                    var blocked: String? = nil
+                    if native?.decodable != true {
+                        if let f = await FFmpeg.probe(url) {
+                            chosen = f
+                            viaFFmpeg = true
+                        } else if let native {
+                            blocked = VideoError.legacy(native.codec)
+                        } else {
+                            blocked = "Can’t read"
+                        }
+                    }
+                    let p = chosen
+                    let (routed, reason) = (viaFFmpeg, blocked)
                     await MainActor.run {
                         Model.shared.apply(id) {
                             $0.kind = url.pathExtension.uppercased()
                             $0.bytes = bytes
-                            guard let p else { $0.blocked = "Can’t read"; return }
+                            $0.viaFFmpeg = routed
+                            $0.blocked = reason
+                            guard let p else { return }
                             $0.w = p.w; $0.h = p.h
                             $0.seconds = p.seconds; $0.fps = p.fps
                             $0.codec = p.codec; $0.hasAudio = p.hasAudio
-                            if !p.decodable { $0.blocked = VideoError.legacy(p.codec) }
+                            $0.audioRate = p.audioRate
                         }
                     }
                 }
@@ -320,7 +350,7 @@ final class Model {
 
         let imageOpts = options
         let videoOpts = videoOptions
-        let jobs = batch.map { ($0.id, $0.url, $0.media) }
+        let jobs = batch.map { ($0.id, $0.url, $0.media, $0.viaFFmpeg, $0.probe) }
         // the hardware video encoders are shared: two exports keep them busy
         // without the two starving each other; stills scale with the cores
         let limit = mode == .video
@@ -333,18 +363,24 @@ final class Model {
 
                 @MainActor func launch() {
                     guard next < jobs.count else { return }
-                    let (id, url, media) = jobs[next]
+                    let (id, url, media, viaFFmpeg, probe) = jobs[next]
                     next += 1
                     self.apply(id) { $0.status = .working }
                     group.addTask(priority: .userInitiated) {
+                        let report: @Sendable (Double) -> Void = { p in
+                            Task { @MainActor in Model.shared.apply(id) { $0.progress = p } }
+                        }
                         do {
                             switch media {
                             case .image:
                                 return (id, .success(try Converter.convert(url, options: imageOpts)))
+                            case .video where viaFFmpeg:
+                                let out = try await FFmpeg.convert(
+                                    url, probe: probe, options: videoOpts, progress: report)
+                                return (id, .success([out]))
                             case .video:
-                                let out = try await VideoConverter.convert(url, options: videoOpts) { p in
-                                    Task { @MainActor in Model.shared.apply(id) { $0.progress = p } }
-                                }
+                                let out = try await VideoConverter.convert(
+                                    url, options: videoOpts, progress: report)
                                 return (id, .success([out]))
                             }
                         } catch {

@@ -68,7 +68,9 @@ struct Stage: View {
                 .foregroundStyle(targeted ? P.accent : Color(hex: 0x707070))
             Text(m.mode == .image
                  ? "JP2 · PDF · PNG · JPEG · TIFF · HEIC · AVIF · PSD · RAW · WebP · and everything else ImageIO reads"
-                 : "MOV · MP4 · M4V · AVI · MPEG · DV · 3GP · and everything else AVFoundation plays")
+                 : (FFmpeg.available
+                    ? "MOV · MP4 · MKV · WebM · AVI · FLV · WMV · MPEG · and old QuickTime codecs too"
+                    : "MOV · MP4 · M4V · AVI · MPEG · DV · 3GP · and everything else AVFoundation plays"))
                 .font(F.regular(F.ui))
                 .foregroundStyle(Color(hex: 0x4E4E4E))
         }
@@ -210,6 +212,7 @@ private struct Row: View {
         var parts = [item.codec, Timecode.short(item.seconds)]
         if item.fps > 0 { parts.append(String(format: item.fps.rounded() == item.fps ? "%.0f fps" : "%.2f fps", item.fps)) }
         if !item.hasAudio { parts.append("no audio") }
+        if item.viaFFmpeg { parts.append("via FFmpeg") }
         return parts.joined(separator: " · ")
     }
 

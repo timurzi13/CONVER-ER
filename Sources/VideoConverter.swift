@@ -90,9 +90,13 @@ enum VideoFormats {
     /// Everything AVFoundation on this Mac will open, as UTTypes.
     private static let readable: [UTType] = AVURLAsset.audiovisualTypes().compactMap { UTType($0.rawValue) }
 
-    /// A movie AVFoundation can open. Audio-only files are left out on purpose.
+    /// A movie AVFoundation can open, or — with the bundled ffmpeg — one of the
+    /// containers macOS never learned (MKV, WebM, FLV, WMV…). Audio-only files
+    /// are left out on purpose.
     static func canRead(_ url: URL) -> Bool {
-        guard let t = UTType(filenameExtension: url.pathExtension.lowercased()),
+        let ext = url.pathExtension.lowercased()
+        if FFmpeg.available, FFmpeg.extraExtensions.contains(ext) { return true }
+        guard let t = UTType(filenameExtension: ext),
               t.conforms(to: .movie) || t.conforms(to: .video)
         else { return false }
         return readable.contains { t.conforms(to: $0) }
@@ -168,6 +172,8 @@ struct VideoProbe: Sendable {
     /// false for codecs macOS dropped (Sorenson, Cinepak, Indeo…): the file
     /// opens, the sound plays, the picture can't be decoded
     var decodable = true
+    /// Hz, when the probe could tell; sizes the AAC bitrate on the ffmpeg path
+    var audioRate = 0
 }
 
 enum VideoConverter {

@@ -11,7 +11,7 @@
 
 ![macOS 15+](https://img.shields.io/badge/macOS-15+-555?style=flat-square)
 ![Universal](https://img.shields.io/badge/Apple_Silicon_+_Intel-555?style=flat-square)
-![Без зависимостей](https://img.shields.io/badge/зависимости-нет-555?style=flat-square)
+![Ничего не нужно ставить](https://img.shields.io/badge/ничего_не_нужно_ставить-555?style=flat-square)
 [![MIT](https://img.shields.io/badge/лицензия-MIT-555?style=flat-square)](LICENSE)
 
 [English](README.md)
@@ -38,7 +38,9 @@ OpenEXR · DICOM · RAW с Canon, Nikon, Sony, Fuji, Leica, Phase One и про�
 
 ### Видео
 
-**Читает** MOV · MP4 · M4V · AVI · MPEG · MPEG-2 TS · DV · 3GP — всё, что играет AVFoundation.
+**Читает** MOV · MP4 · M4V · AVI · MPEG · MPEG-2 TS · DV · 3GP силами самой macOS, а
+**MKV · WebM · FLV · WMV · Ogg · RealMedia · MXF** и старые кодеки QuickTime, от которых
+Apple отказалась, — Sorenson, Cinepak, Indeo, Apple Video — через встроенный FFmpeg.
 
 **Пишет** MOV · MP4 · M4V в H.264, HEVC, ProRes 422 или ProRes 4444 — либо **копированием
 потоков**, когда они просто переупаковываются в новый контейнер без перекодирования.
@@ -105,9 +107,15 @@ xattr -dr com.apple.quarantine /Applications/CONVER+ER.app
 
 ## Что внутри
 
-Всё работает на **ImageIO**, **CoreGraphics** и **AVFoundation**. Никаких сторонних
-декодеров, ffmpeg, Homebrew и Python — поддержка JPEG 2000 и аппаратные видеокодеки в
-macOS давно есть, их просто нигде не дают в руки.
+Всё работает на **ImageIO**, **CoreGraphics** и **AVFoundation** — поддержка JPEG 2000 и
+аппаратные видеокодеки в macOS давно есть, их просто нигде не дают в руки. Ставить ничего
+не нужно: ни Homebrew, ни Python, ни командной строки.
+
+Единственное, чего macOS не умеет, — читать видео, от которого она отказалась. Для этого
+внутри приложения лежит собственный небольшой **FFmpeg**: только LGPL, статический,
+универсальный. Он включается, только когда macOS не может открыть или декодировать файл —
+в очереди тогда написано *via FFmpeg*, — и даже тогда кодирует через то же железо Apple
+(VideoToolbox), а ProRes и AAC — своими кодерами.
 
 Три вещи, на которые движок обращает внимание:
 
@@ -145,6 +153,16 @@ xcode-select --install
 
 На выходе универсальный (Apple Silicon + Intel) `build/CONVER+ER.app`.
 
+Чтобы внутри был FFmpeg, сначала соберите его — скрипт скачает зафиксированную версию с
+ffmpeg.org, проверит SHA-256 и соберёт обе архитектуры (несколько минут, один раз):
+
+```bash
+./scripts/build-ffmpeg.sh
+./build.sh
+```
+
+Без этого шага приложение тоже собирается и работает, просто не открывает форматы выше.
+
 ```
 Sources/
   App.swift         окно, меню, левая колонка настроек
@@ -155,12 +173,20 @@ Sources/
   Model.swift       состояние, очередь, параллельный прогон
   Converter.swift   движок картинок и PDF
   VideoConverter.swift  движок видео
+  FFmpeg.swift      мост к встроенному ffmpeg
+scripts/
+  build-ffmpeg.sh   ровно та сборка FFmpeg, что лежит в приложении
   Theme.swift       палитра, метрики, типографика
 ```
 
 ## Благодарности
 
 Шрифт: [DM Sans](https://fonts.google.com/specimen/DM+Sans), SIL Open Font License.
+
+Видео, которое не читает система: [FFmpeg](https://ffmpeg.org), LGPL 2.1 или новее. Он
+работает отдельной программой внутри приложения (`Contents/Helpers/ffmpeg`) и заменяется
+любой другой сборкой; лицензия, версия и флаги сборки лежат рядом в
+`Contents/Resources/ThirdParty/FFmpeg`.
 
 Сделал **[[BUR0U3]+](https://www.instagram.com/burou3_/)**
 

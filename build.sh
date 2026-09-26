@@ -40,7 +40,18 @@ cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
+if [ -x vendor/ffmpeg/ffmpeg ]; then
+  echo "→ bundling ffmpeg ($(lipo -archs vendor/ffmpeg/ffmpeg))"
+  mkdir -p "$APP/Contents/Helpers" "$APP/Contents/Resources/ThirdParty/FFmpeg"
+  cp vendor/ffmpeg/ffmpeg "$APP/Contents/Helpers/ffmpeg"
+  cp vendor/ffmpeg/COPYING.LGPLv2.1 vendor/ffmpeg/NOTICE.txt "$APP/Contents/Resources/ThirdParty/FFmpeg/"
+else
+  echo "→ no vendor/ffmpeg — building without it (run scripts/build-ffmpeg.sh to add it)"
+fi
+
 echo "→ signing (ad-hoc)"
+# nested code is signed first, then the bundle around it
+[ -f "$APP/Contents/Helpers/ffmpeg" ] && codesign --force --sign - --timestamp=none "$APP/Contents/Helpers/ffmpeg" >/dev/null 2>&1
 codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || true
 
 rm -rf build/obj

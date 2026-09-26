@@ -24,3 +24,9 @@ SOFTWARE.
 
 The bundled typeface DM Sans is (c) 2014 The DM Sans Project Authors and is
 licensed under the SIL Open Font License 1.1 — see Resources/Fonts/OFL.txt.
+
+Release builds bundle FFmpeg (https://ffmpeg.org) as a separate executable,
+licensed under the GNU LGPL 2.1 or later. Its licence text, version, source URL
+and build configuration ship inside the app at
+Contents/Resources/ThirdParty/FFmpeg; the build itself is scripts/build-ffmpeg.sh.
+The MIT licence above covers CONVER+ER's own code only.

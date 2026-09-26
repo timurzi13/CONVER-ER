@@ -11,7 +11,7 @@ Drop files in, pick a format, press Start.
 
 ![macOS 15+](https://img.shields.io/badge/macOS-15+-555?style=flat-square)
 ![Universal](https://img.shields.io/badge/Apple_Silicon_+_Intel-555?style=flat-square)
-![No dependencies](https://img.shields.io/badge/dependencies-none-555?style=flat-square)
+![Self-contained](https://img.shields.io/badge/nothing_to_install-555?style=flat-square)
 [![MIT](https://img.shields.io/badge/license-MIT-555?style=flat-square)](LICENSE)
 
 [Русский](README.ru.md)
@@ -38,7 +38,9 @@ rest — 60-odd formats in all.
 
 ### Video
 
-**Reads** MOV · MP4 · M4V · AVI · MPEG · MPEG-2 TS · DV · 3GP — whatever AVFoundation plays.
+**Reads** MOV · MP4 · M4V · AVI · MPEG · MPEG-2 TS · DV · 3GP through macOS itself, and
+**MKV · WebM · FLV · WMV · Ogg · RealMedia · MXF** plus the QuickTime-era codecs Apple
+dropped — Sorenson, Cinepak, Indeo, Apple Video — through a bundled FFmpeg.
 
 **Writes** MOV · MP4 · M4V, as H.264, HEVC, ProRes 422 or ProRes 4444 — or as a
 **straight copy** that rewraps the streams into the new container without re-encoding
@@ -105,9 +107,15 @@ The panel only shows what actually affects the format you picked — no dead con
 
 ## Under the hood
 
-Everything runs on Apple's **ImageIO**, **CoreGraphics** and **AVFoundation**. No bundled
-decoders, no ffmpeg, no Homebrew, no Python — JPEG 2000 support and hardware video
-encoders are already in macOS, they just aren't exposed anywhere useful.
+Everything runs on Apple's **ImageIO**, **CoreGraphics** and **AVFoundation** — JPEG 2000
+support and hardware video encoders are already in macOS, they just aren't exposed
+anywhere useful. Nothing to install: no Homebrew, no Python, no command line.
+
+The one thing macOS can't do is read video it has given up on. For that the app carries
+a small **FFmpeg** of its own, built LGPL-only, static and universal. It only steps in when
+macOS can't open or decode a file — the queue says *via FFmpeg* when it does — and even
+then the encoding goes through the same Apple hardware (VideoToolbox), with FFmpeg's own
+ProRes and AAC encoders for the rest.
 
 Three things the converter is careful about:
 
@@ -145,6 +153,16 @@ xcode-select --install
 
 That produces a universal (Apple Silicon + Intel) `build/CONVER+ER.app`.
 
+To include FFmpeg, build it first — it downloads the pinned source from ffmpeg.org,
+checks its SHA-256 and compiles both architectures (a few minutes, once):
+
+```bash
+./scripts/build-ffmpeg.sh
+./build.sh
+```
+
+Without that step the app still builds and runs; it just can't open the formats above.
+
 ```
 Sources/
   App.swift         window, menus, the settings column
@@ -155,12 +173,20 @@ Sources/
   Model.swift       state, queue, the parallel run
   Converter.swift   the image and PDF engine
   VideoConverter.swift  the video engine
+  FFmpeg.swift      the bridge to the bundled ffmpeg
+scripts/
+  build-ffmpeg.sh   the exact FFmpeg build that ships
   Theme.swift       palette, metrics, type
 ```
 
 ## Credits
 
 Typeface: [DM Sans](https://fonts.google.com/specimen/DM+Sans), SIL Open Font License.
+
+Video the system can't read: [FFmpeg](https://ffmpeg.org), LGPL 2.1 or later. It runs as a
+separate program inside the app (`Contents/Helpers/ffmpeg`) and can be swapped for any
+other build; the licence, version and build flags travel with it in
+`Contents/Resources/ThirdParty/FFmpeg`.
 
 Created by **[[BUR0U3]+](https://www.instagram.com/burou3_/)**
 
