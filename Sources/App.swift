@@ -65,8 +65,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil)
         }
         if ProcessInfo.processInfo.environment["CONVERER_DEBUG"] != nil {
-            let ok = NSFont(name: "DMSans-Medium", size: 16) != nil
-            FileHandle.standardError.write("DM Sans available: \(ok)\n".data(using: .utf8)!)
+            // every file this process can draw DMSans-Medium from; a copy
+            // installed on the machine would hide a broken bundle, so list them
+            let desc = CTFontDescriptorCreateWithNameAndSize("DMSans-Medium" as CFString, 16)
+            let all = CTFontDescriptorCreateMatchingFontDescriptors(desc, nil) as? [CTFontDescriptor] ?? []
+            let urls = all.compactMap { CTFontDescriptorCopyAttribute($0, kCTFontURLAttribute) as? URL }
+            let used = (CTFontCopyAttribute(CTFontCreateWithName("DMSans-Medium" as CFString, 16, nil), kCTFontURLAttribute) as? URL)?.path ?? "?"
+            let lines = urls.map { "  candidate: \($0.path)" } + ["  drawn from: \(used)"]
+            FileHandle.standardError.write(("DMSans-Medium\n" + lines.joined(separator: "\n") + "\n").data(using: .utf8)!)
         }
     }
 }

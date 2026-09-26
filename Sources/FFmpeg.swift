@@ -15,8 +15,46 @@ enum FFmpeg {
             return URL(fileURLWithPath: override)
         }
         let u = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/ffmpeg")
-        return FileManager.default.isExecutableFile(atPath: u.path) ? u : nil
+        guard FileManager.default.isExecutableFile(atPath: u.path) else { return nil }
+        return runnable(u)
     }()
+
+    /// A browser quarantines every file in a downloaded zip. Approving the app
+    /// on first launch ("Open Anyway") clears the app, not the helper inside
+    /// it, and macOS then refuses to exec the helper. The app has already been
+    /// allowed to run, so it clears the flag from its own helper. If the bundle
+    /// is read-only — macOS runs an app that hasn't been moved out of Downloads
+    /// from a translocated, read-only copy — a copy in Application Support is
+    /// used instead.
+    private static func runnable(_ helper: URL) -> URL {
+        let flag = "com.apple.quarantine"
+        guard getxattr(helper.path, flag, nil, 0, 0, 0) >= 0 else { return helper }
+        if removexattr(helper.path, flag, 0) == 0 { return helper }
+
+        let fm = FileManager.default
+        guard let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return helper
+        }
+        let dir = support.appendingPathComponent("CONVER+ER", isDirectory: true)
+        let copy = dir.appendingPathComponent("ffmpeg")
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        // reuse the copy while it matches this build of the app
+        let size = { (u: URL) in (try? fm.attributesOfItem(atPath: u.path)[.size] as? Int) ?? -1 }
+        if size(copy) != size(helper) {
+            if fm.fileExists(atPath: copy.path) {
+                chflags(copy.path, 0)
+                try? fm.removeItem(at: copy)
+            }
+            try? fm.copyItem(at: helper, to: copy)
+        }
+        // a copy inherits the original's xattrs and file flags; ours, so both go
+        chflags(copy.path, 0)
+        guard removexattr(copy.path, flag, 0) == 0 || getxattr(copy.path, flag, nil, 0, 0, 0) < 0 else {
+            return helper
+        }
+        return fm.isExecutableFile(atPath: copy.path) ? copy : helper
+    }
 
     static var available: Bool { url != nil }
 
