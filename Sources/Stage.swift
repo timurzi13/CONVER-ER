@@ -151,7 +151,8 @@ private struct Row: View {
                 } else if item.status == .skipped {
                     Text("Already there — skipped").font(F.regular(12)).foregroundStyle(Color(hex: 0x8A8A8A))
                 } else if item.isPDF {
-                    Text(item.pages == 1 ? "1 page" : "\(item.pages) pages")
+                    Text((item.pages == 1 ? "1 page" : "\(item.pages) pages")
+                         + (item.pdfDPI > 0 ? " · \(item.pdfDPI) dpi" : " · vector"))
                         .font(F.regular(12))
                         .foregroundStyle(Color(hex: 0x8A8A8A))
                 } else if item.isVideo, !item.codec.isEmpty {

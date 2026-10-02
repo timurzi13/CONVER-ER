@@ -78,6 +78,9 @@ struct Options {
     var pdfPage: Int = 1
     /// points → pixels when rasterising a page
     var pdfDPI: Double = 150
+    /// render each page at the resolution of the images on it; pages with
+    /// none (pure vector) fall back to pdfDPI
+    var pdfOriginalDPI: Bool = true
 }
 
 enum ConvertError: LocalizedError {
@@ -115,6 +118,8 @@ enum Converter {
         var kind = ""
         /// 0 for anything that is not a PDF
         var pages = 0
+        /// PDFs: resolution of the sharpest image, 0 for a pure vector document
+        var dpi = 0
     }
 
     /// Pixel size, kind and page count without decoding anything.
@@ -124,7 +129,8 @@ enum Converter {
                   let page = doc.page(at: 1) else { return nil }
             let pt = pageSize(page)
             return Probe(w: Int(pt.width.rounded()), h: Int(pt.height.rounded()),
-                         kind: "PDF", pages: doc.numberOfPages)
+                         kind: "PDF", pages: doc.numberOfPages,
+                         dpi: Int(PDFResolution.of(doc) ?? 0))
         }
 
         guard let src = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
@@ -268,7 +274,8 @@ enum Converter {
         let pt = pageSize(page)
         guard pt.width > 0, pt.height > 0 else { return nil }
 
-        let k = max(1, o.pdfDPI) / 72
+        let dpi = o.pdfOriginalDPI ? (PDFResolution.of(page) ?? o.pdfDPI) : o.pdfDPI
+        let k = max(1, dpi) / 72
         let base = (w: max(1, Int((pt.width * k).rounded())),
                     h: max(1, Int((pt.height * k).rounded())))
         let target = targetSize(w: base.w, h: base.h, options: o)

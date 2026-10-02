@@ -311,12 +311,24 @@ private struct SettingsPanel: View {
                 // vector stays vector when the target is PDF, so there is
                 // nothing to rasterise
                 if !m.format.isPDF {
-                    PRow(label: "Raster DPI", top: L.rowGap) {
-                        PSlider(value: $m.pdfDPI, range: 72...600, step: 6)
-                        Spacer().frame(width: L.colGap)
-                        PValue(value: $m.pdfDPI, range: 72...600, step: 6)
+                    PRow(label: "Original DPI", top: L.rowGap) {
+                        Spacer().frame(width: L.trackW + L.colGap)
+                        PToggle(isOn: $m.pdfOriginalDPI)
                     }
-                    .help("How finely a page is rendered. 72 dpi is the page's own size; 150–300 suits text.")
+                    .help("Render each page at the resolution of the images on it — a 300 dpi scan comes out at 300 dpi.")
+
+                    // the slider is the whole answer with Original off, and the
+                    // fallback for vector pages with it on
+                    if !m.pdfOriginalDPI || m.hasVectorPDF {
+                        PRow(label: m.pdfOriginalDPI ? "Vector DPI" : "Raster DPI", top: L.rowGap) {
+                            PSlider(value: $m.pdfDPI, range: 72...600, step: 6)
+                            Spacer().frame(width: L.colGap)
+                            PValue(value: $m.pdfDPI, range: 72...600, step: 6)
+                        }
+                        .help(m.pdfOriginalDPI
+                              ? "Pages with no images inside have no resolution of their own; they render at this."
+                              : "How finely a page is rendered. 72 dpi is the page's own size; 150–300 suits text.")
+                    }
                 }
             }
         }

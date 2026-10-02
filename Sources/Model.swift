@@ -29,6 +29,8 @@ struct Item: Identifiable, Equatable {
     var kind: String = ""
     /// PDFs only; 0 for bitmaps
     var pages: Int = 0
+    /// PDFs only: resolution of the images inside, 0 when there are none
+    var pdfDPI: Int = 0
     // video only
     var seconds: Double = 0
     var fps: Double = 0
@@ -96,6 +98,7 @@ final class Model {
     var pdfModeIndex = 0
     var pdfPage: Double = 1
     var pdfDPI: Double = 150
+    var pdfOriginalDPI = true
 
     // MARK: video settings
     var videoContainerIndex = 0
@@ -118,6 +121,9 @@ final class Model {
 
     /// the PDF section only exists while there is a PDF in the queue
     var hasPDF: Bool { items.contains { $0.media == .image && $0.isPDF } }
+    /// a PDF with nothing but vectors has no resolution to keep
+    var hasVectorPDF: Bool { items.contains { $0.media == .image && $0.isPDF && $0.pdfDPI == 0 } }
+
     var maxPDFPages: Int {
         max(1, items.filter { $0.media == .image }.map(\.pages).max() ?? 1)
     }
@@ -138,7 +144,8 @@ final class Model {
             onExists: OnExists(rawValue: existsIndex) ?? .rename,
             pdfAllPages: pdfModeIndex == 0,
             pdfPage: Int(pdfPage.rounded()),
-            pdfDPI: pdfDPI
+            pdfDPI: pdfDPI,
+            pdfOriginalDPI: pdfOriginalDPI
         )
     }
 
@@ -229,6 +236,7 @@ final class Model {
                     await MainActor.run {
                         Model.shared.apply(id) {
                             $0.w = p.w; $0.h = p.h; $0.kind = p.kind; $0.pages = p.pages; $0.bytes = bytes
+                            $0.pdfDPI = p.dpi
                         }
                     }
                 case .video:

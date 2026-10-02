@@ -185,7 +185,13 @@ struct PValue: View {
             .opacity(enabled ? 1 : 0.4)
             .onHover { if enabled { hover = $0 } }
             .onAppear { text = shown }
-            .onChange(of: value) { _, _ in if !focused { text = shown } }
+            // follow the value whenever it moves for any reason other than the
+            // keystrokes in this field — the slider beside it included, even
+            // while the caret is still sitting here
+            .onChange(of: value) { _, now in
+                guard parse(text) != now else { return }
+                text = focused ? shown.replacingOccurrences(of: suffix, with: "") : shown
+            }
             .onChange(of: focused) { _, now in
                 if now { text = shown.replacingOccurrences(of: suffix, with: "") }
                 else { commit() }

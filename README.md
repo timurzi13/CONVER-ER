@@ -85,7 +85,8 @@ The panel only shows what actually affects the format you picked — no dead con
 | **Flatten Onto** | the colour transparent pixels land on, for formats that can't store alpha |
 | **Keep Metadata** | carry EXIF / IPTC / colour profile into the result |
 | **Pages** | every page of a PDF, or one specific page |
-| **Raster DPI** | how finely a PDF page is rendered — 72 is the page's own size |
+| **Original DPI** | render each PDF page at the resolution of the scan or images on it — on by default |
+| **Raster DPI** | the resolution to use instead; with Original on it covers pure-vector pages, which have none of their own |
 
 **Video**
 
