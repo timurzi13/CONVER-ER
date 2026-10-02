@@ -26,6 +26,9 @@ struct ConverErApp: App {
                 Button("Convert") { m.run() }
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(m.running || m.items.isEmpty)
+                Button("Stop") { m.stop() }
+                    .keyboardShortcut(".", modifiers: .command)
+                    .disabled(!m.running)
                 Button("Clear List") { m.clear() }
                     .keyboardShortcut(.delete, modifiers: .command)
                     .disabled(m.running || m.items.isEmpty)

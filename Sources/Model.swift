@@ -74,6 +74,11 @@ final class Model {
     // MARK: queue
     var items: [Item] = []
     var running = false
+    /// Stop was pressed; the run is winding down
+    var stopping = false
+    private var runTask: Task<Void, Never>? = nil
+    /// read from the conversion threads, so not an @Observable property
+    private let stopFlag = StopFlag()
     var mode: MediaKind = .image
 
     /// the half of the queue the current tab shows
@@ -356,6 +361,8 @@ final class Model {
         }
 
         running = true
+        stopping = false
+        stopFlag.reset()
         for it in batch {
             apply(it.id) {
                 $0.status = .queued; $0.progress = 0
@@ -363,6 +370,7 @@ final class Model {
             }
         }
 
+        let flag = stopFlag
         let imageOpts = options
         let videoOpts = videoOptions
         let jobs = batch.map { ($0.id, $0.url, $0.media, $0.viaFFmpeg, $0.probe) }
@@ -372,12 +380,12 @@ final class Model {
             ? min(jobs.count, 2)
             : min(jobs.count, max(2, ProcessInfo.processInfo.activeProcessorCount))
 
-        Task { @MainActor in
+        runTask = Task { @MainActor in
             await withTaskGroup(of: (UUID, Result<[URL], Error>).self) { group in
                 var next = 0
 
                 @MainActor func launch() {
-                    guard next < jobs.count else { return }
+                    guard next < jobs.count, !self.stopping else { return }
                     let (id, url, media, viaFFmpeg, probe) = jobs[next]
                     next += 1
                     self.apply(id) { $0.status = .working }
@@ -389,7 +397,8 @@ final class Model {
                             switch media {
                             case .image:
                                 return (id, .success(try Converter.convert(
-                                    url, options: imageOpts, progress: report)))
+                                    url, options: imageOpts, progress: report,
+                                    stopped: { flag.isSet })))
                             case .video where viaFFmpeg:
                                 let out = try await FFmpeg.convert(
                                     url, probe: probe, options: videoOpts, progress: report)
@@ -413,11 +422,30 @@ final class Model {
                 }
             }
             self.running = false
+            self.stopping = false
+            self.runTask = nil
         }
     }
 
+    /// Ends the run: nothing new starts, the files in flight are cut short
+    /// (exports cancelled, ffmpeg terminated, PDFs stop at the next page) and
+    /// their half-written output is removed. Files that finished stay done.
+    func stop() {
+        guard running, !stopping else { return }
+        stopping = true
+        stopFlag.set()
+        runTask?.cancel()
+    }
+
     private func finish(_ id: UUID, _ result: Result<[URL], Error>) {
+        let stopped = stopping
         apply(id) { item in
+            // whatever failed after Stop failed because of it: back in the queue
+            if stopped, case .failure = result {
+                item.status = .queued
+                item.progress = 0
+                return
+            }
             switch result {
             case .success(let outs):
                 item.status = .done
@@ -437,6 +465,15 @@ final class Model {
             }
         }
     }
+}
+
+/// A flag the conversion threads can read while the main actor sets it.
+final class StopFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
+    func set() { lock.lock(); value = true; lock.unlock() }
+    func reset() { lock.lock(); value = false; lock.unlock() }
 }
 
 // MARK: - formatting

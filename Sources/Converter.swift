@@ -89,6 +89,7 @@ enum ConvertError: LocalizedError {
     case skipped
     case noDestination
     case writeFailed
+    case stopped
     case noSuchPage(Int, Int)
 
     var errorDescription: String? {
@@ -98,6 +99,7 @@ enum ConvertError: LocalizedError {
         case .skipped:               return "Skipped — exists"
         case .noDestination:         return "No output folder"
         case .writeFailed:           return "Write failed"
+        case .stopped:               return "Stopped"
         case .noSuchPage(let k, let n):
             return n == 1 ? "Only 1 page — no page \(k)" : "Only \(n) pages — no page \(k)"
         }
@@ -155,9 +157,11 @@ enum Converter {
     /// A PDF can produce several files, so every conversion returns a list.
     @discardableResult
     static func convert(
-        _ url: URL, options o: Options, progress: ((Double) -> Void)? = nil
+        _ url: URL, options o: Options,
+        progress: ((Double) -> Void)? = nil,
+        stopped: (() -> Bool)? = nil
     ) throws -> [URL] {
-        if isPDF(url) { return try convertPDF(url, options: o, progress: progress) }
+        if isPDF(url) { return try convertPDF(url, options: o, progress: progress, stopped: stopped) }
         return [try convertImage(url, options: o)]
     }
 
@@ -238,7 +242,7 @@ enum Converter {
     }
 
     private static func convertPDF(
-        _ url: URL, options o: Options, progress: ((Double) -> Void)?
+        _ url: URL, options o: Options, progress: ((Double) -> Void)?, stopped: (() -> Bool)?
     ) throws -> [URL] {
         guard let doc = CGPDFDocument(url as CFURL), doc.numberOfPages > 0 else {
             throw ConvertError.unreadable
@@ -262,6 +266,12 @@ enum Converter {
         let steps = Double(wanted.count * 2)
         progress?(0)
         for (i, k) in wanted.enumerated() {
+            // a stopped file is all or nothing: its finished pages go too, so
+            // running it again doesn't leave -1 copies beside the first try
+            if stopped?() == true {
+                for u in written { try? FileManager.default.removeItem(at: u) }
+                throw ConvertError.stopped
+            }
             guard let page = doc.page(at: k) else { continue }
             // a one-page document keeps its plain name
             let suffix = total > 1 ? "-p\(k)" : ""

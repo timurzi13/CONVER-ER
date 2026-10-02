@@ -53,6 +53,12 @@ use `⌘O`. Images and videos sort themselves into their tabs; drop only videos 
 app switches to Video for you. Stills convert in parallel across all cores, video two at
 a time so the hardware encoders stay busy without fighting each other.
 
+Before anything runs, the size column shows what each file will come out at, in
+pixels — amber when a page gets past 60 megapixels — and a PDF row tells you the
+resolution of the scan inside it. Long runs show progress per page or per frame, and
+**Stop** (`⌘.`, or the progress button itself) cuts a run short: nothing new starts,
+the files in flight are abandoned and their half-written output removed.
+
 ## Install
 
 1. **[Download the latest release](https://github.com/timurzi13/CONVER-ER/releases/latest)**

@@ -104,12 +104,15 @@ struct Stage: View {
             XBButton(title: m.targetName, enabled: !m.running) {
                 m.cycleTarget()
             }
+            // while running the same button shows progress and, under the
+            // pointer, offers to stop
             XBButton(
-                title: m.running ? "\(Int(m.progress * 100))%" : "Start",
+                title: m.stopping ? "Stopping" : (m.running ? "\(Int(m.progress * 100))%" : "Start"),
                 live: m.running,
-                enabled: !m.running && m.hasWork
+                liveHover: m.stopping ? nil : "Stop",
+                enabled: m.running ? !m.stopping : m.hasWork
             ) {
-                m.run()
+                if m.running { m.stop() } else { m.run() }
             }
         }
     }
@@ -119,8 +122,14 @@ struct Stage: View {
             RoundBtn(system: "folder", enabled: m.visible.contains { $0.out != nil }) {
                 if let done = m.visible.last(where: { $0.out != nil }) { m.reveal(done) }
             }
-            RoundBtn(system: "trash", enabled: !m.visible.isEmpty && !m.running) {
-                withAnimation(M.easeOut) { m.clear() }
+            // the bin can't act during a run, so its slot becomes Stop
+            if m.running {
+                RoundBtn(system: "stop.fill", enabled: !m.stopping) { m.stop() }
+                    .help("Stop")
+            } else {
+                RoundBtn(system: "trash", enabled: !m.visible.isEmpty) {
+                    withAnimation(M.easeOut) { m.clear() }
+                }
             }
         }
     }

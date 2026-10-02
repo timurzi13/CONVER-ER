@@ -267,8 +267,22 @@ enum FFmpeg {
         _ args: [String],
         onLine: (@Sendable (String) -> Void)? = nil
     ) async -> (Int32, String, String) {
+        let proc = Process()
+        // Stop cancels the task; the process has to be told separately
+        return await withTaskCancellationHandler {
+            await launch(proc, exe, args, onLine: onLine)
+        } onCancel: {
+            if proc.isRunning { proc.terminate() }
+        }
+    }
+
+    private static func launch(
+        _ proc: Process,
+        _ exe: URL,
+        _ args: [String],
+        onLine: (@Sendable (String) -> Void)?
+    ) async -> (Int32, String, String) {
         await withCheckedContinuation { cont in
-            let proc = Process()
             proc.executableURL = exe
             proc.arguments = args
             let out = Pipe(), err = Pipe()

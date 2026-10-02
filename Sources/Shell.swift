@@ -151,6 +151,8 @@ struct RoundBtn: View {
 struct XBButton: View {
     let title: String
     var live: Bool = false
+    /// what a live button says under the pointer, e.g. "Stop" over "42%"
+    var liveHover: String? = nil
     var enabled: Bool = true
     var width: CGFloat = 102
     let action: () -> Void
@@ -158,7 +160,7 @@ struct XBButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
+            Text(live && hover ? (liveHover ?? title) : title)
                 .font(F.medium(F.ui))
                 .monospacedDigit()
                 .foregroundStyle(.white)

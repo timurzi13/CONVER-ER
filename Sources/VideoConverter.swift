@@ -277,7 +277,11 @@ enum VideoConverter {
         defer { watch.cancel() }
 
         do {
-            try await session.export(to: dst, as: fileType)
+            try await withTaskCancellationHandler {
+                try await session.export(to: dst, as: fileType)
+            } onCancel: {
+                session.cancelExport()
+            }
         } catch {
             try? FileManager.default.removeItem(at: dst)
             throw VideoError.failed(error.localizedDescription)
