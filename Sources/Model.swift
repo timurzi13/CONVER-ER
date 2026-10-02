@@ -199,6 +199,13 @@ final class Model {
         return sum / Double(v.count)
     }
 
+    /// The pixel size this item will come out at, for the queue.
+    func predicted(_ item: Item) -> (w: Int, h: Int, dpi: Int)? {
+        guard item.media == .image else { return nil }
+        return Converter.predictedPixels(
+            w: item.w, h: item.h, isPDF: item.isPDF, nativeDPI: item.pdfDPI, options: options)
+    }
+
     /// something in this tab that can actually convert
     var hasWork: Bool { visible.contains { $0.blocked == nil } }
 
@@ -381,7 +388,8 @@ final class Model {
                         do {
                             switch media {
                             case .image:
-                                return (id, .success(try Converter.convert(url, options: imageOpts)))
+                                return (id, .success(try Converter.convert(
+                                    url, options: imageOpts, progress: report)))
                             case .video where viaFFmpeg:
                                 let out = try await FFmpeg.convert(
                                     url, probe: probe, options: videoOpts, progress: report)

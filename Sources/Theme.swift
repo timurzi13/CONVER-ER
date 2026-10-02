@@ -46,6 +46,8 @@ enum P {
     static let trackHandle = Color(hex: 0x535353)
     static let ok          = Color(hex: 0x86F879)
     static let bad         = Color(hex: 0xFFA6A6)
+    /// heads-up, not an error: a huge output
+    static let warn        = Color(hex: 0xFFC56B)
 }
 
 /// Motion. The web shell leans on one ease-out curve; SwiftUI gets the same feel.

@@ -150,11 +150,12 @@ private struct Row: View {
                     Text(why).font(F.regular(12)).foregroundStyle(P.bad).lineLimit(1)
                 } else if item.status == .skipped {
                     Text("Already there — skipped").font(F.regular(12)).foregroundStyle(Color(hex: 0x8A8A8A))
-                } else if item.isPDF {
-                    Text((item.pages == 1 ? "1 page" : "\(item.pages) pages")
-                         + (item.pdfDPI > 0 ? " · \(item.pdfDPI) dpi" : " · vector"))
+                } else if item.isPDF || outLine != nil {
+                    Text(imageLine)
                         .font(F.regular(12))
-                        .foregroundStyle(Color(hex: 0x8A8A8A))
+                        .monospacedDigit()
+                        .foregroundStyle(heavy ? P.warn : Color(hex: 0x8A8A8A))
+                        .lineLimit(1)
                 } else if item.isVideo, !item.codec.isEmpty {
                     Text(videoLine)
                         .font(F.regular(12))
@@ -174,11 +175,15 @@ private struct Row: View {
             }
             .frame(width: 168, alignment: .leading)
 
-            Text(item.isPDF ? "\(Fmt.px(item.w, item.h)) pt" : Fmt.px(item.w, item.h))
+            Text(dimsText)
                 .font(F.regular(14))
                 .monospacedDigit()
-                .foregroundStyle(Color(hex: 0x9A9A9A))
-                .frame(width: 118, alignment: .trailing)
+                .foregroundStyle(heavy ? P.warn : (outPixels != nil ? Color(hex: 0xD6D6D6) : Color(hex: 0x9A9A9A)))
+                .lineLimit(1)
+                .frame(width: 132, alignment: .trailing)
+                .help(outPixels != nil
+                      ? "Comes out at this size. Source: \(Fmt.px(item.w, item.h))\(item.isPDF ? " pt" : " px")"
+                      : "")
 
             Text(sizeText)
                 .font(F.regular(14))
@@ -226,7 +231,50 @@ private struct Row: View {
         return target
     }
 
+    // MARK: what the image side will produce
+
+    /// the predicted output size, when it differs from what goes in
+    private var outPixels: (w: Int, h: Int)? {
+        guard let p = m.predicted(item) else { return nil }
+        if !item.isPDF, p.w == item.w, p.h == item.h { return nil }
+        return (p.w, p.h)
+    }
+
+    /// what comes out, in pixels, where that's known; otherwise what goes in
+    private var dimsText: String {
+        if let o = outPixels { return "\(o.w) × \(o.h) px" }
+        return item.isPDF ? "\(Fmt.px(item.w, item.h)) pt" : Fmt.px(item.w, item.h)
+    }
+
+    private var outLine: String? {
+        guard let o = outPixels else { return nil }
+        let mp = Double(o.w * o.h) / 1_000_000
+        return mp >= 10 ? String(format: "%.0f MP", mp) : String(format: "%.1f MP", mp)
+    }
+
+    private var imageLine: String {
+        var parts: [String] = []
+        if item.isPDF {
+            parts.append(item.pages == 1 ? "1 page" : "\(item.pages) pages")
+            parts.append(item.pdfDPI > 0 ? "scan \(item.pdfDPI) dpi" : "vector")
+            if let p = m.predicted(item), item.pdfDPI > 0, Double(p.dpi) > Double(item.pdfDPI) * 1.15 {
+                parts.append("upscaled to \(p.dpi)")
+            }
+        }
+        if let out = outLine { parts.append(out) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// past ~60 MP a page gets slow to draw and heavy to keep in memory
+    private var heavy: Bool {
+        guard let p = m.predicted(item) else { return false }
+        return p.w * p.h > 60_000_000
+    }
+
     private var sizeText: String {
+        if item.isPDF, item.status == .working {
+            return "\(Int((item.progress * 100).rounded()))%"
+        }
         if item.isVideo, item.status == .working {
             return "\(Int((item.progress * 100).rounded()))%"
         }

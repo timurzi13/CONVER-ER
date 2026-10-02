@@ -154,8 +154,10 @@ enum Converter {
 
     /// A PDF can produce several files, so every conversion returns a list.
     @discardableResult
-    static func convert(_ url: URL, options o: Options) throws -> [URL] {
-        if isPDF(url) { return try convertPDF(url, options: o) }
+    static func convert(
+        _ url: URL, options o: Options, progress: ((Double) -> Void)? = nil
+    ) throws -> [URL] {
+        if isPDF(url) { return try convertPDF(url, options: o, progress: progress) }
         return [try convertImage(url, options: o)]
     }
 
@@ -235,7 +237,9 @@ enum Converter {
                         : CGSize(width: box.width, height: box.height)
     }
 
-    private static func convertPDF(_ url: URL, options o: Options) throws -> [URL] {
+    private static func convertPDF(
+        _ url: URL, options o: Options, progress: ((Double) -> Void)?
+    ) throws -> [URL] {
         guard let doc = CGPDFDocument(url as CFURL), doc.numberOfPages > 0 else {
             throw ConvertError.unreadable
         }
@@ -252,7 +256,12 @@ enum Converter {
         }
 
         var written: [URL] = []
-        for k in wanted {
+        // two steps a page — drawing it and encoding it — because one large
+        // page can take seconds on its own and a single-page file would
+        // otherwise sit at 0% until it is done
+        let steps = Double(wanted.count * 2)
+        progress?(0)
+        for (i, k) in wanted.enumerated() {
             guard let page = doc.page(at: k) else { continue }
             // a one-page document keeps its plain name
             let suffix = total > 1 ? "-p\(k)" : ""
@@ -262,9 +271,11 @@ enum Converter {
                 try writeVectorPage(page, to: dst, options: o)   // stays vector
             } else {
                 guard let img = rasterize(page, options: o) else { throw ConvertError.writeFailed }
+                progress?(Double(i * 2 + 1) / steps)
                 try writeImage(img, to: dst, properties: [:], options: o)
             }
             written.append(dst)
+            progress?(Double(i * 2 + 2) / steps)
         }
         guard !written.isEmpty else { throw ConvertError.noImage }
         return written
@@ -335,7 +346,26 @@ enum Converter {
 
     // MARK: geometry
 
-    private static func targetSize(w: Int, h: Int, options o: Options) -> (w: Int, h: Int) {
+    /// What a file will come out as, in pixels, before anything runs: the
+    /// queue shows it so a 102-megapixel page is a decision, not a surprise.
+    /// nil when the output isn't a bitmap (PDF → PDF stays vector).
+    static func predictedPixels(
+        w: Int, h: Int, isPDF: Bool, nativeDPI: Int, options o: Options
+    ) -> (w: Int, h: Int, dpi: Int)? {
+        guard w > 0, h > 0 else { return nil }
+        guard isPDF else {
+            let t = targetSize(w: w, h: h, options: o)
+            return (t.w, t.h, 0)
+        }
+        if o.format.isPDF { return nil }
+        let dpi = o.pdfOriginalDPI && nativeDPI > 0 ? Double(nativeDPI) : o.pdfDPI
+        let base = (w: max(1, Int((Double(w) * dpi / 72).rounded())),
+                    h: max(1, Int((Double(h) * dpi / 72).rounded())))
+        let t = targetSize(w: base.w, h: base.h, options: o)
+        return (t.w, t.h, Int(dpi))
+    }
+
+    static func targetSize(w: Int, h: Int, options o: Options) -> (w: Int, h: Int) {
         switch o.sizeMode {
         case .original:
             return (w, h)
